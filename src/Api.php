@@ -1,10 +1,4 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: Evaris
- * Date: 15/06/2016
- * Time: 01:25
- */
 
 namespace Ibracilinks\OrangeMoney;
 
@@ -14,10 +8,10 @@ use GuzzleHttp\Psr7\Response;
 
 
 /**
- * PHP Orange Money Sdk Client
+ * Laravel Package for Orange Money Web Payment API
  *
- * @author Fomekong Evaris @foris-master
- * GitHub: https://github.com/Foris-master/orange-money-sdk
+ * @author Ibraci Links @ibracilinks
+ * GitHub: https://github.com/Ibracilinks/OrangeMoney
  */
 class Api
 {
@@ -60,7 +54,8 @@ class Api
      * @param string $userid
      * @param string $password
      */
-    public function __construct() {
+    public function __construct()
+    {
         // Credentials: <Base64 value of UTF-8 encoded “username:password”>
         $this->client = new Client([
             'base_uri' => self::BASE_URL
@@ -79,10 +74,10 @@ class Api
      * @param string $endpoint
      * @param string $options
      */
-    private function apiCall($httpMethod, $endpoint, $options) {
+    private function apiCall($httpMethod, $endpoint, $options)
+    {
         // POST method or GET method
         try{
-//            $api_url = self::BASE_URL.$endpoint;
             if(strtolower($httpMethod) === "post") {
 
                 /** @var Response $response */
@@ -117,7 +112,8 @@ class Api
      * @param string $endpoint
      * @param string $options
      */
-    private function post($endpoint, $options = null) {
+    private function post($endpoint, $options = null)
+    {
         return $this->apiCall("post", $endpoint, $options);
     }
     /**
@@ -129,7 +125,7 @@ class Api
         $options = [
             'headers'=> [
                 'Authorization' => 'Basic '.$this->auth_header,
-                'Accept'=>'application/json'
+                'Accept'        =>'application/json'
             ],
             'form_params' => [
                  'grant_type'=>'client_credentials',
@@ -162,8 +158,8 @@ class Api
         $options = [
             'headers'=> [
                 'Authorization' => 'Bearer '.$token,
-                'Accept'=>'application/json',
-                'Content-Type'=>'application/json'
+                'Accept'        =>'application/json',
+                'Content-Type'  =>'application/json'
             ],
             'body' => $b
         ];
@@ -195,7 +191,4 @@ class Api
 
         return $this->post('orange-money-webpay/dev/v1/transactionstatus', $options);
     }
-
-
-
 }

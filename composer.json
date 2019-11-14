@@ -1,6 +1,6 @@
 {
-    "name": "ibracilinks/orange-money",
-    "description": "This a laravel package for Orange operator web payment solution with Orange Money.",
+    "name": "ibracilinks/orangemoney",
+    "description": "A laravel package Orange Money Web Payment API.",
     "type": "library",
     "license": "MIT",
     "authors": [

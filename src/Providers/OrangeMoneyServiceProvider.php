@@ -26,21 +26,21 @@ class OrangeMoneyServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->app->singleton(OrangeMoney::class, function ($app) {
-            return new OrangeMoney();
-        });
-    }
-
-    /**
-     * Merges user's and paypal's configs.
-     *
-     * @return void
-     */
-    private function mergeConfig()
-    {
         $this->mergeConfigFrom(
             __DIR__.'/../config/orangemoney.php',
             'orangemoney'
         );
+    }
+
+    /**
+     * Register the facades.
+     *
+     * @return void
+     */
+    public function registerFacades()
+    {
+        $this->app->singleton('OrangeMoney', function ($app) {
+            return new \Ibracilinks\OrangeMoney();
+        });
     }
 }

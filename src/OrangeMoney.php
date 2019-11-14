@@ -15,23 +15,20 @@ class OrangeMoney
        $this->api = new Api();
     }
 
-    public function getAccesToken(){
-
+    public function getAccesToken()
+    {
         $rep = $this->api->getToken();
-//        $data= $rep->getBody()->getContents();
         $data= json_decode((string)$rep->getBody(),true);
-//        setcookie('access_token',$data["access_token"],time()+$data["expires_in"]);
         $this->token=$data["access_token"];
-       return $data;
 
+        return $data;
     }
 
-    public function webPayment($data){
-
-
+    public function webPayment($data)
+    {
         $dt= $this->getAccesToken();
         $rep = $this->api->Payment($this->token,$data);
-//        $data= $rep->getBody()->getContents();
+        
         if (is_object($rep)) {
             $data = json_decode((string)$rep->getBody(), true);
             return $data;
@@ -46,13 +43,14 @@ class OrangeMoney
     {
 
         $data = [
-            "order_id" => $orderId,
-            "amount" => $amount,
+            "order_id"  => $orderId,
+            "amount"    => $amount,
             "pay_token" => $pay_token
         ];
+
         $dt = $this->getAccesToken();
         $rep = $this->api->checkTransactionStatus($this->token, $data);
-//        $data= $rep->getBody()->getContents();
+
         if (is_object($rep)) {
             $data = json_decode((string)$rep->getBody(), true);
             return $data;
