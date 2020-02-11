@@ -40,7 +40,7 @@ class OrangeMoneyServiceProvider extends ServiceProvider
     public function registerFacades()
     {
         $this->app->singleton('OrangeMoney', function ($app) {
-            return new \Ibracilinks\OrangeMoney();
+            return new \Ibracilinks\OrangeMoney\OrangeMoney();
         });
     }
 }
