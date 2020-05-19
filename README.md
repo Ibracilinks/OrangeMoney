@@ -7,7 +7,7 @@ A Laravel Package for Orange Money Web Payment API
 * Use following command to install:
 
 ```bash
-composer require ibracilinks/orangemoney
+composer require  ibracilinks/orange-money 
 ```
 
 * Add the service provider to your `$providers` array in `config/app.php` file like:
