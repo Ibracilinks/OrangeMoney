@@ -132,7 +132,7 @@ class Api
             ]
         ];
 
-        return $this->post('oauth/v2/token',$options);
+        return $this->post('oauth/v3/token',$options);
     }
 
 
@@ -164,7 +164,7 @@ class Api
             'body' => $b
         ];
 
-        return $this->post('orange-money-webpay/dev/v1/webpayment',$options);
+        return $this->post('orange-money-webpay/cm/v1/webpayment',$options);
     }
 
     public function checkTransactionStatus($token, $data)
@@ -189,6 +189,6 @@ class Api
             'body' => $b
         ];
 
-        return $this->post('orange-money-webpay/dev/v1/transactionstatus', $options);
+        return $this->post('orange-money-webpay/cm/v1/transactionstatus', $options);
     }
 }
