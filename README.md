@@ -36,6 +36,7 @@ OM_API_PATH=orange-money-webpay/dev/v1
 OM_CURRENCY=OUV
 OM_TIMEOUT=30
 OM_CONNECT_TIMEOUT=10
+OM_TOKEN_TTL=3600
 ```
 
 `OM_AUTH_HEADER` is the Base64-encoded `client_id:client_secret` value, without the `Basic ` prefix.
@@ -43,6 +44,8 @@ OM_CONNECT_TIMEOUT=10
 The defaults use Orange's development endpoint and test currency. Both payment creation and transaction status use the configured `OM_API_PATH`.
 
 `OM_TIMEOUT` and `OM_CONNECT_TIMEOUT` are in seconds (defaults: 30 and 10). They apply to the built-in HTTP client, so a slow Orange Money response cannot block a PHP worker forever.
+
+Access tokens are kept in your default Laravel cache store, so a payment or a status check does not need a new authentication request each time. `OM_TOKEN_TTL` is the maximum number of seconds a token is kept (default 3600, `0` turns the cache off). A token is also dropped one minute before Orange Money expires it, and a response without `expires_in` is never cached. The cache key is derived from a hash of `OM_AUTH_HEADER`, so the credentials themselves are not part of it. If Orange Money rejects a cached token with a 401, the package requests a new one and sends the request again, once. `getAccesToken()` always requests a new token and replaces the cached one.
 
 After changing settings in an application that caches configuration, run `php artisan config:cache`.
 
@@ -136,8 +139,9 @@ Breaking changes to handle when upgrading:
 - The generated `order_id` now looks like `OM_` followed by 16 hexadecimal characters, and it is returned in the result.
 - The `Api` class methods (`getToken()`, `Payment()`, `checkTransactionStatus()`) now return decoded arrays and throw `OrangeMoneyException`, instead of returning a response object or an error string.
 - The built-in HTTP client now has a 30 second timeout and a 10 second connection timeout. It used to wait indefinitely.
+- Access tokens are now cached in your default Laravel cache store, for one hour at most. Set `OM_TOKEN_TTL=0` to get back the previous behavior of one token request per call.
 
-If you previously published `config/orangemoney.php`, merge the new `api_path`, `currency`, `timeout`, `connect_timeout`, and `notif_url` settings from `src/config/orangemoney.php` into your copy.
+If you previously published `config/orangemoney.php`, merge the new `api_path`, `currency`, `timeout`, `connect_timeout`, `token_ttl`, and `notif_url` settings from `src/config/orangemoney.php` into your copy.
 
 ## Development
 

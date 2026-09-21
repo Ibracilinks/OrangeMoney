@@ -54,6 +54,7 @@ class OrangeMoneyTest extends TestCase
         $this->assertSame('OUV', config('orangemoney.currency'));
         $this->assertSame(30, config('orangemoney.timeout'));
         $this->assertSame(10, config('orangemoney.connect_timeout'));
+        $this->assertSame(3600, config('orangemoney.token_ttl'));
 
         $paths = ServiceProvider::pathsToPublish(OrangeMoneyServiceProvider::class, 'orangemoney-config');
         $this->assertCount(1, $paths);
@@ -283,6 +284,178 @@ class OrangeMoneyTest extends TestCase
         (new OrangeMoney([], $client))->getAccesToken();
     }
 
+    public function test_access_tokens_are_cached_and_shared_between_service_instances(): void
+    {
+        $history = [];
+        $first = new OrangeMoney([], $this->mockClient([
+            $this->tokenResponse('cached-token'),
+            $this->paymentResponse(),
+        ], $history));
+        $second = new OrangeMoney([], $this->mockClient([$this->paymentResponse()], $history));
+
+        $first->webPayment(['amount' => 100]);
+        $second->checkTransactionStatus('order-123', 100, 'payment-token');
+
+        $this->assertCount(3, $history);
+        $this->assertSame('/oauth/v2/token', $history[0]['request']->getUri()->getPath());
+        $this->assertSame('Bearer cached-token', $history[1]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('Bearer cached-token', $history[2]['request']->getHeaderLine('Authorization'));
+    }
+
+    #[DataProvider('uncacheableTokens')]
+    public function test_tokens_that_cannot_be_cached_are_requested_every_time(array $config, string $tokenBody): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            new Response(200, [], $tokenBody), $this->paymentResponse(),
+            new Response(200, [], $tokenBody), $this->paymentResponse(),
+        ], $history);
+        $payment = new OrangeMoney($config, $client);
+
+        $payment->webPayment(['amount' => 100]);
+        $payment->webPayment(['amount' => 100]);
+
+        $this->assertCount(4, $history);
+    }
+
+    public static function uncacheableTokens(): array
+    {
+        return [
+            'no lifetime' => [[], '{"access_token":"token"}'],
+            'lifetime shorter than the safety margin' => [[], '{"access_token":"token","expires_in":"30"}'],
+            'caching disabled' => [['token_ttl' => 0], '{"access_token":"token","expires_in":"3600"}'],
+        ];
+    }
+
+    #[DataProvider('tokenLifetimes')]
+    public function test_cached_tokens_expire_when_they_should(int $expiresIn, int $tokenTtl): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            $this->tokenResponse('first-token', $expiresIn), $this->paymentResponse(),
+            $this->paymentResponse(),
+            $this->tokenResponse('second-token', $expiresIn), $this->paymentResponse(),
+        ], $history);
+        $payment = new OrangeMoney(['token_ttl' => $tokenTtl], $client);
+
+        // The token is kept for 100 seconds in both cases.
+        $payment->webPayment(['amount' => 100]);
+        $this->travel(50)->seconds();
+        $payment->webPayment(['amount' => 100]);
+        $this->travel(51)->seconds();
+        $payment->webPayment(['amount' => 100]);
+
+        $this->assertCount(5, $history);
+        $this->assertSame('Bearer first-token', $history[2]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('Bearer second-token', $history[4]['request']->getHeaderLine('Authorization'));
+    }
+
+    public static function tokenLifetimes(): array
+    {
+        return [
+            'lifetime minus the safety margin' => [160, 3600],
+            'configured token_ttl' => [3600, 100],
+        ];
+    }
+
+    public function test_a_rejected_cached_token_is_replaced_and_the_request_is_sent_again_once(): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            $this->tokenResponse('old-token'), $this->paymentResponse(),
+            new Response(401, [], '{"message":"Expired token"}'),
+            $this->tokenResponse('new-token'), $this->paymentResponse(),
+            $this->paymentResponse(),
+        ], $history);
+        $payment = new OrangeMoney([], $client);
+
+        $payment->webPayment(['amount' => 100]);
+        $payment->webPayment(['amount' => 100]);
+        $payment->webPayment(['amount' => 100]);
+
+        $this->assertCount(6, $history);
+        $this->assertSame('Bearer old-token', $history[2]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('/oauth/v2/token', $history[3]['request']->getUri()->getPath());
+        $this->assertSame('Bearer new-token', $history[4]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('Bearer new-token', $history[5]['request']->getHeaderLine('Authorization'));
+    }
+
+    public function test_a_401_with_a_token_that_was_just_requested_is_not_retried(): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            $this->tokenResponse(),
+            new Response(401, [], '{"message":"Expired token"}'),
+        ], $history);
+
+        try {
+            (new OrangeMoney([], $client))->webPayment(['amount' => 100]);
+            $this->fail('Expected an OrangeMoneyException.');
+        } catch (OrangeMoneyException $exception) {
+            $this->assertSame(401, $exception->getStatusCode());
+            $this->assertCount(2, $history);
+        }
+    }
+
+    public function test_other_failures_do_not_discard_the_cached_token(): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            $this->tokenResponse('cached-token'), $this->paymentResponse(),
+            new Response(500, [], 'Internal Server Error'),
+            $this->paymentResponse(),
+        ], $history);
+        $payment = new OrangeMoney([], $client);
+
+        $payment->webPayment(['amount' => 100]);
+        try {
+            $payment->webPayment(['amount' => 100]);
+            $this->fail('Expected an OrangeMoneyException.');
+        } catch (OrangeMoneyException $exception) {
+            $this->assertSame(500, $exception->getStatusCode());
+        }
+        $payment->webPayment(['amount' => 100]);
+
+        $this->assertCount(4, $history);
+        $this->assertSame('Bearer cached-token', $history[3]['request']->getHeaderLine('Authorization'));
+    }
+
+    public function test_cached_tokens_are_not_shared_between_credentials(): void
+    {
+        $history = [];
+        $first = new OrangeMoney(['auth_header' => 'first-credentials'], $this->mockClient([
+            $this->tokenResponse('first-token'), $this->paymentResponse(),
+        ], $history));
+        $second = new OrangeMoney(['auth_header' => 'second-credentials'], $this->mockClient([
+            $this->tokenResponse('second-token'), $this->paymentResponse(),
+        ], $history));
+
+        $first->webPayment(['amount' => 100]);
+        $second->webPayment(['amount' => 100]);
+
+        $this->assertCount(4, $history);
+        $this->assertSame('Basic second-credentials', $history[2]['request']->getHeaderLine('Authorization'));
+        $this->assertSame('Bearer second-token', $history[3]['request']->getHeaderLine('Authorization'));
+    }
+
+    public function test_get_access_token_always_asks_orange_money_and_refreshes_the_cache(): void
+    {
+        $history = [];
+        $client = $this->mockClient([
+            $this->tokenResponse('first-token'), $this->paymentResponse(),
+            $this->tokenResponse('second-token'), $this->paymentResponse(),
+        ], $history);
+        $payment = new OrangeMoney([], $client);
+
+        $payment->webPayment(['amount' => 100]);
+        $token = $payment->getAccesToken();
+        $payment->webPayment(['amount' => 100]);
+
+        $this->assertSame('second-token', $token['access_token']);
+        $this->assertCount(4, $history);
+        $this->assertSame('Bearer second-token', $history[3]['request']->getHeaderLine('Authorization'));
+    }
+
     public function test_the_legacy_notif_url_environment_variable_is_still_used_but_does_not_take_precedence(): void
     {
         $config = fn () => require __DIR__.'/../src/config/orangemoney.php';
@@ -310,6 +483,16 @@ class OrangeMoneyTest extends TestCase
         $client = (new ReflectionProperty(Api::class, 'client'))->getValue($api);
 
         return [$client->getConfig('timeout'), $client->getConfig('connect_timeout')];
+    }
+
+    private function tokenResponse(string $token = 'test-token', int $lifetime = 3600): Response
+    {
+        return new Response(200, [], json_encode(['access_token' => $token, 'expires_in' => (string) $lifetime]));
+    }
+
+    private function paymentResponse(): Response
+    {
+        return new Response(201, [], '{"status":201}');
     }
 
     private function mockClient(array $responses, array &$history): Client

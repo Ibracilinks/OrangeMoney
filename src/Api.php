@@ -51,6 +51,8 @@ class Api
     private string $api_path;
 
     private string $currency;
+
+    private int $token_ttl;
     /**
      * Constructor
      * @param array $config Configuration overrides
@@ -72,6 +74,7 @@ class Api
         $this->notif_url    = $config['notif_url'] ?? '';
         $this->api_path     = trim($config['api_path'] ?? 'orange-money-webpay/dev/v1', '/');
         $this->currency     = $config['currency'] ?? 'OUV';
+        $this->token_ttl    = (int) ($config['token_ttl'] ?? 3600);
 
     }
 
@@ -151,6 +154,44 @@ class Api
         ];
 
         return $this->post('oauth/v2/token',$options);
+    }
+
+    /**
+     * Get the access token kept in the Laravel cache, if there is a valid one
+     */
+    public function cachedToken(): ?string
+    {
+        $token = cache()->get($this->tokenCacheKey());
+
+        return is_string($token) && $token !== '' ? $token : null;
+    }
+
+    /**
+     * Keep an access token in the Laravel cache until Orange Money expires it,
+     * without going over the configured token_ttl. A token_ttl of 0 disables the cache.
+     * @param array $token Decoded response of the token endpoint
+     */
+    public function cacheToken(array $token): void
+    {
+        // Stop using the token a minute before it expires. A response without expires_in is not cached.
+        $ttl = min((int) ($token['expires_in'] ?? 0) - 60, $this->token_ttl);
+
+        if ($ttl > 0) {
+            cache()->put($this->tokenCacheKey(), $token['access_token'], $ttl);
+        }
+    }
+
+    public function forgetToken(): void
+    {
+        cache()->forget($this->tokenCacheKey());
+    }
+
+    /**
+     * One entry per set of credentials, without keeping them in the key
+     */
+    private function tokenCacheKey(): string
+    {
+        return 'orangemoney.token.'.hash('sha256', $this->auth_header);
     }
 
     /**

@@ -9,10 +9,6 @@ use InvalidArgumentException;
 class OrangeMoney
 {
     private $api;
-    /**
-     * @var string or null
-     */
-    private  $token;
 
     public function __construct(array $config = [], ?ClientInterface $client = null)
     {
@@ -20,6 +16,9 @@ class OrangeMoney
     }
 
     /**
+     * Request a new access token from Orange Money. The token is also stored in the cache
+     * used by webPayment() and checkTransactionStatus(), replacing the one kept there.
+     *
      * @throws OrangeMoneyException
      */
     public function getAccesToken(): array
@@ -28,7 +27,7 @@ class OrangeMoney
         if (!is_string($data['access_token'] ?? null) || $data['access_token'] === '') {
             throw new OrangeMoneyException('Orange Money did not return a valid access token.');
         }
-        $this->token=$data["access_token"];
+        $this->api->cacheToken($data);
 
         return $data;
     }
@@ -49,8 +48,7 @@ class OrangeMoney
             $data['order_id'] = $this->generateOrderId();
         }
 
-        $this->getAccesToken();
-        $rep = $this->api->Payment($this->token, $data);
+        $rep = $this->authenticated(fn (string $token) => $this->api->Payment($token, $data));
         $rep['order_id'] ??= $data['order_id'];
 
         return $rep;
@@ -68,9 +66,33 @@ class OrangeMoney
             "pay_token" => $pay_token
         ];
 
-        $this->getAccesToken();
+        return $this->authenticated(fn (string $token) => $this->api->checkTransactionStatus($token, $data));
+    }
 
-        return $this->api->checkTransactionStatus($this->token, $data);
+    /**
+     * Run a request with the cached access token, or with a new one when there is none.
+     *
+     * @param callable(string): array $request Receives the access token
+     * @throws OrangeMoneyException
+     */
+    private function authenticated(callable $request): array
+    {
+        $token = $this->api->cachedToken();
+
+        if ($token !== null) {
+            try {
+                return $request($token);
+            } catch (OrangeMoneyException $exception) {
+                // A 401 means the request was not processed, so it is safe to send it again
+                // with a new token. Any other failure is not about the cached token.
+                if ($exception->getStatusCode() !== 401) {
+                    throw $exception;
+                }
+                $this->api->forgetToken();
+            }
+        }
+
+        return $request($this->getAccesToken()['access_token']);
     }
 
     private function generateOrderId(): string
