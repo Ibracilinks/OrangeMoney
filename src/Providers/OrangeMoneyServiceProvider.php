@@ -2,7 +2,7 @@
 
 namespace Ibracilinks\OrangeMoney\Providers;
 
-use Ibracilinks\OrangeMoney;
+use Ibracilinks\OrangeMoney\OrangeMoney;
 use Illuminate\Support\ServiceProvider;
 
 class OrangeMoneyServiceProvider extends ServiceProvider
@@ -12,11 +12,13 @@ class OrangeMoneyServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    public function boot()
+    public function boot(): void
     {
-        $this->publishes([
-            __DIR__.'/../config/orangemoney.php' => config_path('orangemoney.php'),
-        ]);
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/../config/orangemoney.php' => config_path('orangemoney.php'),
+            ], 'orangemoney-config');
+        }
     }
 
     /**
@@ -24,12 +26,14 @@ class OrangeMoneyServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
             __DIR__.'/../config/orangemoney.php',
             'orangemoney'
         );
+
+        $this->registerFacades();
     }
 
     /**
@@ -37,10 +41,11 @@ class OrangeMoneyServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    public function registerFacades()
+    public function registerFacades(): void
     {
-        $this->app->singleton('OrangeMoney', function ($app) {
-            return new \Ibracilinks\OrangeMoney\OrangeMoney();
+        $this->app->singleton(OrangeMoney::class, function ($app) {
+            return new OrangeMoney($app['config']->get('orangemoney', []));
         });
+        $this->app->alias(OrangeMoney::class, 'OrangeMoney');
     }
 }

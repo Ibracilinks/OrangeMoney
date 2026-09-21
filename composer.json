@@ -9,12 +9,27 @@
             "email": "hello@ibracilinks.com"
         }
     ],
-    "minimum-stability": "dev",
-    "require": {},
+    "require": {
+        "php": "^8.3",
+        "guzzlehttp/guzzle": "^7.9",
+        "illuminate/support": "^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^11.5.50"
+    },
     "autoload": {
         "psr-4": {
             "Ibracilinks\\OrangeMoney\\": "src/"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ibracilinks\\OrangeMoney\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "@php vendor/bin/phpunit"
     },
     "extra": {
       "laravel": {
